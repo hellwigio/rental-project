@@ -1,5 +1,5 @@
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Group, PermissionsMixin
+from django.db import models, router, transaction
 from django.utils import timezone
 
 
@@ -17,7 +17,11 @@ class UserManager(BaseUserManager):
             raise ValueError("An email address is required.")
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
-        user.save(using=self._db)
+        database = self._db or router.db_for_write(self.model)
+        with transaction.atomic(using=database):
+            user.save(using=database)
+            renters, _ = Group.objects.using(database).get_or_create(name="renter")
+            user.groups.add(renters)
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
@@ -29,13 +33,8 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    class Role(models.TextChoices):
-        RENTER = "renter", "Renter"
-        LANDLORD = "landlord", "Landlord"
-
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=150)
-    role = models.CharField(max_length=8, choices=Role, default=Role.RENTER)
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -44,14 +43,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["name"]
-
-    class Meta:
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(role__in=["renter", "landlord"]),
-                name="user_valid_role",
-            ),
-        ]
 
     def clean(self):
         super().clean()
