@@ -4,6 +4,12 @@ import django.utils.timezone
 from django.db import migrations, models
 
 
+def create_groups(apps, schema_editor):
+    groups = apps.get_model("auth", "Group").objects.using(schema_editor.connection.alias)
+    for name in ("renter", "landlord"):
+        groups.get_or_create(name=name)
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -22,15 +28,12 @@ class Migration(migrations.Migration):
                 ('is_superuser', models.BooleanField(default=False, help_text='Designates that this user has all permissions without explicitly assigning them.', verbose_name='superuser status')),
                 ('email', models.EmailField(max_length=254, unique=True)),
                 ('name', models.CharField(max_length=150)),
-                ('role', models.CharField(choices=[('renter', 'Renter'), ('landlord', 'Landlord')], default='renter', max_length=8)),
                 ('is_staff', models.BooleanField(default=False)),
                 ('is_active', models.BooleanField(default=True)),
                 ('date_joined', models.DateTimeField(default=django.utils.timezone.now)),
                 ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
                 ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
             ],
-            options={
-                'constraints': [models.CheckConstraint(condition=models.Q(('role__in', ['renter', 'landlord'])), name='user_valid_role')],
-            },
         ),
+        migrations.RunPython(create_groups, migrations.RunPython.noop),
     ]
