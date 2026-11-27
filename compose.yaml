@@ -23,7 +23,8 @@ services:
     build: .
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DJANGO_HTTPS: ${DJANGO_HTTPS:-false}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       MYSQL_HOST: db
       MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env}
@@ -34,7 +35,7 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
-    command: ["sh", "-ec", "python manage.py migrate --noinput && exec python manage.py runserver 0.0.0.0:8000 --noreload"]
+    command: ["sh", "-ec", "python manage.py migrate --noinput && exec gunicorn --bind 0.0.0.0:8000 --workers 2 --threads 4 config.wsgi:application"]
 
 volumes:
   mysql_data:

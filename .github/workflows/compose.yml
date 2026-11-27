@@ -1,0 +1,37 @@
+name: Compose and MySQL
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MYSQL_DATABASE: rental
+      MYSQL_USER: rental
+      MYSQL_PASSWORD: disposable-ci-password
+      MYSQL_ROOT_PASSWORD: disposable-ci-root
+      DJANGO_SECRET_KEY: disposable-ci-secret
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up --build -d
+      - name: Check HTTP and migrations
+        run: |
+          curl --retry 30 --retry-all-errors --retry-delay 2 -fsS http://localhost:8000/api/listings/
+          docker compose exec -T django python manage.py check --database default
+          docker compose exec -T django python manage.py makemigrations --check --dry-run
+      - name: Run tests against MySQL
+        run: |
+          docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot' <<'SQL'
+          GRANT ALL PRIVILEGES ON `test_rental`.* TO 'rental'@'%';
+          SQL
+          docker compose exec -T django python manage.py test
+      - name: Verify persistence across restart
+        run: |
+          docker compose exec -T django python manage.py shell -c "from apps.users.models import User; User.objects.create_user('restart@example.com', name='Restart')"
+          docker compose down
+          docker compose up -d
+          curl --retry 30 --retry-all-errors --retry-delay 2 -fsS http://localhost:8000/api/listings/
+          docker compose exec -T django python manage.py shell -c "from apps.users.models import User; assert User.objects.filter(email='restart@example.com').exists()"
+      - if: failure()
+        run: docker compose logs

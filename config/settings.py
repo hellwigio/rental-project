@@ -16,6 +16,8 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
+    "rest_framework",
+    "django_filters",
     "apps.users",
     "apps.listings",
     "apps.bookings",
@@ -64,3 +66,16 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Europe/Berlin"
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_PAGINATION_CLASS": "apps.listings.paginators.ResultsPagination",
+    "PAGE_SIZE": 20,
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+}
+
+SESSION_COOKIE_SECURE = env.bool("DJANGO_HTTPS", default=False)
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+if SESSION_COOKIE_SECURE:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
