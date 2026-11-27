@@ -115,3 +115,27 @@ rentals.example.com {
 
 Подставьте свой домен и направьте DNS на EC2. Разрешите входящие 80/443 для
 HTTPS, SSH ограничьте своим адресом. Проверьте GET /api/listings/ через HTTPS.
+
+### Новый сервер в Стокгольме через Terraform
+
+Конфигурация в `infra/` создаёт один EC2 t3.small, зашифрованный корневой диск
+20 GiB gp3, Elastic IP и security group. Нужны AWS-доступ, публичная подсеть
+в eu-north-1, существующая пара ключей EC2 и домен под вашим управлением.
+Задайте subnet_id, key_name, admin_ipv4 и domain в infra/terraform.tfvars.
+Выполните в infra:
+
+```sh
+terraform init
+terraform plan -out=rental.tfplan
+terraform apply rental.tfplan
+terraform output -raw public_ipv4
+```
+
+Создайте DNS A-запись домена на полученный IPv4. Cloud-init установит Docker,
+Compose и Caddy, сгенерирует секреты на сервере и поднимет проверенную версию
+приложения. После завершения cloud-init проверьте HTTPS по catalog_url.
+Для диагностики подключитесь как ubuntu и выполните `cloud-init status --long`
+и `sudo journalctl -u rental -u caddy`. Данные MySQL размещаются на корневом
+EBS-диске. Terraform блокирует уничтожение EC2 через prevent_destroy.
+Для обновления приложения на месте выберите новый проверенный коммит в
+/opt/rental-project и выполните `sudo systemctl restart rental`.

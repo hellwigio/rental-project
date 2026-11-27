@@ -35,3 +35,16 @@ jobs:
           docker compose exec -T django python manage.py shell -c "from apps.users.models import User; assert User.objects.filter(email='restart@example.com').exists()"
       - if: failure()
         run: docker compose logs
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+      - run: terraform fmt -check
+      - run: terraform init -backend=false -lockfile=readonly
+      - run: terraform validate

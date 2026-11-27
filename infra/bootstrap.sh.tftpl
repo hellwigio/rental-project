@@ -1,0 +1,46 @@
+#!/bin/bash
+set -eu -o pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get -o Acquire::Retries=5 update
+apt-get -o Acquire::Retries=5 install -y docker.io docker-compose-v2 git caddy openssl
+systemctl enable --now docker
+git clone https://github.com/hellwigio/rental-project.git /opt/rental-project
+cd /opt/rental-project
+git checkout --detach 01a92578db6270bf6c3f31d7e2f6e56e880114d4
+umask 077
+cat > .env <<ENV
+DJANGO_SECRET_KEY=$(openssl rand -hex 48)
+DJANGO_DEBUG=false
+DJANGO_HTTPS=true
+DJANGO_ALLOWED_HOSTS=${domain},localhost,127.0.0.1
+MYSQL_DATABASE=rental
+MYSQL_USER=rental
+MYSQL_PASSWORD=$(openssl rand -hex 32)
+MYSQL_ROOT_PASSWORD=$(openssl rand -hex 32)
+ENV
+umask 022
+cat > /etc/systemd/system/rental.service <<'UNIT'
+[Unit]
+Description=Rental project Docker Compose
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/rental-project
+ExecStart=/usr/bin/docker compose up --build -d
+ExecStop=/usr/bin/docker compose stop
+TimeoutStartSec=900
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now rental.service
+cat > /etc/caddy/Caddyfile <<'CADDY'
+${domain} {
+    reverse_proxy 127.0.0.1:8000
+}
+CADDY
+systemctl enable --now caddy
+systemctl reload caddy
