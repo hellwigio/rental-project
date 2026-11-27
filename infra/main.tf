@@ -20,13 +20,8 @@ variable "subnet_id" {
   description = "Existing public subnet with a route to an internet gateway in Stockholm."
 }
 
-variable "domain" {
-  type        = string
-  description = "DNS hostname used for the public HTTPS endpoint."
-  validation {
-    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.domain))
-    error_message = "Use a lowercase DNS hostname without a scheme or path."
-  }
+locals {
+  hostname = "${replace(aws_eip.app.public_ip, ".", "-")}.nip.io"
 }
 
 variable "key_name" {
@@ -89,7 +84,7 @@ resource "aws_instance" "app" {
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.app.id]
   key_name                    = var.key_name
-  user_data                   = templatefile("${path.module}/bootstrap.sh.tftpl", { domain = var.domain })
+  user_data                   = templatefile("${path.module}/bootstrap.sh.tftpl", { domain = local.hostname })
   tags                        = { Name = "rental-project" }
   metadata_options {
     http_tokens = "required"
@@ -109,8 +104,12 @@ resource "aws_instance" "app" {
 }
 
 resource "aws_eip" "app" {
-  domain   = "vpc"
-  instance = aws_instance.app.id
+  domain = "vpc"
+}
+
+resource "aws_eip_association" "app" {
+  allocation_id = aws_eip.app.id
+  instance_id   = aws_instance.app.id
 }
 
 output "public_ipv4" {
@@ -118,5 +117,5 @@ output "public_ipv4" {
 }
 
 output "catalog_url" {
-  value = "https://${var.domain}/api/listings/"
+  value = "https://${local.hostname}/api/listings/"
 }

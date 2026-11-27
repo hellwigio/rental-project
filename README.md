@@ -120,18 +120,18 @@ HTTPS, SSH ограничьте своим адресом. Проверьте GE
 
 Конфигурация в `infra/` создаёт один EC2 t3.small, зашифрованный корневой диск
 20 GiB gp3, Elastic IP и security group. Нужны AWS-доступ, публичная подсеть
-в eu-north-1, существующая пара ключей EC2 и домен под вашим управлением.
-Задайте subnet_id, key_name, admin_ipv4 и domain в infra/terraform.tfvars.
+в eu-north-1, существующая пара ключей EC2 и IPv4 администратора для SSH.
+Задайте subnet_id, key_name, admin_ipv4 в infra/terraform.tfvars.
 Выполните в infra:
 
 ```sh
 terraform init
 terraform plan -out=rental.tfplan
 terraform apply rental.tfplan
-terraform output -raw public_ipv4
+terraform output -raw catalog_url
 ```
 
-Создайте DNS A-запись домена на полученный IPv4. Cloud-init установит Docker,
+Имя nip.io формируется из выделенного Elastic IP автоматически. Cloud-init установит Docker,
 Compose и Caddy, сгенерирует секреты на сервере и поднимет проверенную версию
 приложения. После завершения cloud-init проверьте HTTPS по catalog_url.
 Для диагностики подключитесь как ubuntu и выполните `cloud-init status --long`
