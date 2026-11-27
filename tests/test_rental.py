@@ -91,3 +91,40 @@ class ConcurrentBooking(TransactionTestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             self.assertEqual(sorted(pool.map(attempt, guests)), [False, True])
         self.assertEqual(Booking.objects.count(), 1)
+
+
+class CancellationTests(APITestCase):
+    def setUp(self):
+        self.start = date(2030, 7, 1)
+        self.owner = User.objects.create_user("owner@example.com", name="Owner")
+        self.guest = User.objects.create_user("guest@example.com", name="Guest")
+        listing = Listing.objects.create(landlord=self.owner, title="Flat", city="Berlin",
+                                         rooms=1, housing_type="apartment", nightly_price=100)
+        self.dates = dict(listing=listing.pk, start_date=self.start,
+                          end_date=self.start + timedelta(days=3))
+        self.booking = Booking.objects.create(renter=self.guest, listing=listing,
+                                             start_date=self.start, end_date=self.dates["end_date"],
+                                             status=Booking.Status.CONFIRMED)
+        self.url = f"/api/bookings/{self.booking.pk}/status/"
+
+    def cancel(self, user, days_before):
+        self.client.force_authenticate(user)
+        with patch("django.utils.timezone.localdate", return_value=self.start - timedelta(days=days_before)):
+            return self.client.patch(self.url, {"status": "cancelled"})
+
+    def test_guest_can_cancel_two_days_before_and_dates_become_available(self):
+        self.assertEqual(self.cancel(self.guest, 2).status_code, 200)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.CANCELLED)
+        with patch("django.utils.timezone.localdate", return_value=self.start - timedelta(days=2)):
+            self.assertEqual(self.client.post("/api/bookings/", self.dates).status_code, 201)
+
+    def test_guest_cannot_cancel_one_day_before(self):
+        self.assertEqual(self.cancel(self.guest, 1).status_code, 400)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.CONFIRMED)
+
+    def test_owner_cannot_cancel_for_guest(self):
+        self.assertEqual(self.cancel(self.owner, 2).status_code, 403)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.CONFIRMED)

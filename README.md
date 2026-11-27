@@ -132,13 +132,12 @@ terraform output -raw catalog_url
 ```
 
 Имя nip.io формируется из выделенного Elastic IP автоматически. Cloud-init установит Docker,
-Compose и Caddy, сгенерирует секреты на сервере и поднимет проверенную версию
-приложения. После завершения cloud-init проверьте HTTPS по catalog_url.
+Compose и Caddy, сгенерирует секреты на сервере и поднимет текущую версию
+ветки main. После завершения cloud-init проверьте HTTPS по catalog_url.
 Для диагностики подключитесь как ubuntu и выполните `cloud-init status --long`
 и `sudo journalctl -u rental -u caddy`. Данные MySQL размещаются на корневом
 EBS-диске. Terraform блокирует уничтожение EC2 через prevent_destroy.
-Для обновления приложения на месте выберите новый проверенный коммит в
-/opt/rental-project и выполните `sudo systemctl restart rental`.
+На новых инстансах `sudo systemctl restart rental` обновляет main через git pull --ff-only и пересобирает контейнеры. На ранее созданном инстансе со старым unit выполните в /opt/rental-project: `sudo git fetch origin main && sudo git switch main && sudo git merge --ff-only origin/main && sudo systemctl restart rental`.
 
 ### Деплой кнопкой в GitHub Actions
 

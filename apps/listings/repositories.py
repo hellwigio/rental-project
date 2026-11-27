@@ -1,13 +1,6 @@
 from django.db.models import Count
 
-from .models import Listing, SearchEvent
-
-
-def catalog():
-    return Listing.objects.filter(is_active=True).annotate(
-        views=Count("visits", distinct=True),
-        reviews=Count("bookings__review", distinct=True),
-    )
+from .models import SearchEvent
 
 
 def popular_queries():

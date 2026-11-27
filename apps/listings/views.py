@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.db.models.deletion import ProtectedError
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, viewsets
@@ -12,10 +13,22 @@ from .models import Listing, ListingView, SearchEvent
 from .serializers import ListingSerializer
 
 
+class CatalogOrdering(filters.OrderingFilter):
+    def filter_queryset(self, request, queryset, view):
+        ordering = self.get_ordering(request, queryset, view)
+        fields = {term.lstrip("-") for term in ordering}
+        metrics = {"views": "visits", "reviews": "bookings__review"}
+        annotations = {
+            field: Count(relation, distinct=True)
+            for field, relation in metrics.items() if field in fields
+        }
+        return queryset.annotate(**annotations).order_by(*ordering)
+
+
 class Listings(viewsets.ModelViewSet):
     serializer_class = ListingSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, CatalogOrdering]
     filterset_class = ListingFilter
     search_fields = ["title", "description"]
     ordering_fields = ["nightly_price", "created_at", "views", "reviews"]
@@ -23,7 +36,7 @@ class Listings(viewsets.ModelViewSet):
 
     def get_queryset(self):
         if self.action in {"list", "retrieve"}:
-            return repositories.catalog()
+            return Listing.objects.filter(is_active=True)
         return Listing.objects.filter(landlord=self.request.user).order_by("-pk")
 
     def filter_queryset(self, queryset):
