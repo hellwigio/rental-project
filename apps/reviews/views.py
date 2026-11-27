@@ -2,9 +2,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 
-from ..models import Review
-from ..serializers import ReviewSerializer
-from ..services import leave_review
+from .models import Review
+from .serializers import ReviewSerializer
+from .services import leave_review
 
 
 class Reviews(ListCreateAPIView):

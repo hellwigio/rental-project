@@ -5,9 +5,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from .. import services
-from ..models import Booking
-from ..serializers import BookingSerializer, StatusChange
+from . import services
+from .models import Booking
+from .serializers import BookingSerializer, StatusChange
 
 
 class Bookings(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

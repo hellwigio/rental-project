@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.listings.models import Listing
-from ..models import Booking
+from .models import Booking
 
 Status = Booking.Status
 

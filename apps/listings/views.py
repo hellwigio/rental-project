@@ -6,10 +6,10 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
-from .. import repositories
-from ..filters import ListingFilter
-from ..models import Listing, ListingView, SearchEvent
-from ..serializers import ListingSerializer
+from . import repositories
+from .filters import ListingFilter
+from .models import Listing, ListingView, SearchEvent
+from .serializers import ListingSerializer
 
 
 class Listings(viewsets.ModelViewSet):

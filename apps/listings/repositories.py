@@ -1,6 +1,6 @@
 from django.db.models import Count
 
-from ..models import Listing, SearchEvent
+from .models import Listing, SearchEvent
 
 
 def catalog():

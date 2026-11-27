@@ -1,6 +1,6 @@
 from django_filters import rest_framework as filters
 
-from ..models import Listing
+from .models import Listing
 
 
 class ListingFilter(filters.FilterSet):

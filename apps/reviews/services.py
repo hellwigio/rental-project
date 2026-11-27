@@ -3,7 +3,7 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.bookings.models import Booking
-from ..models import Review
+from .models import Review
 
 
 @transaction.atomic
