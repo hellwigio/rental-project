@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Rental deployment state and branch-scoped GitHub OIDC role
+Parameters:
+  Subnet:
+    Type: AWS::EC2::Subnet::Id
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  AdminIPv4:
+    Type: String
+  CreateProvider:
+    Type: String
+    AllowedValues: ['yes', 'no']
+Conditions:
+  NewProvider: !Equals [!Ref CreateProvider, 'yes']
+Resources:
+  Provider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: NewProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+  State:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpirePlans
+            Prefix: plans/
+            Status: Enabled
+            ExpirationInDays: 2
+            NoncurrentVersionExpiration: {NoncurrentDays: 2}
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rental-github-deploy
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [NewProvider, !Ref Provider, !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com']
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub:
+                  - 'repo:hellwigio@19504879/rental-project@1473116557:ref:refs/heads/main'
+                  - 'repo:hellwigio/rental-project:ref:refs/heads/main'
+      Policies:
+        - PolicyName: rental-deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Ref AWS::StackId
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt State.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource:
+                  - !Sub '${State.Arn}/rental/terraform.tfstate'
+                  - !Sub '${State.Arn}/rental/terraform.tfstate.tflock'
+                  - !Sub '${State.Arn}/plans/*'
+              - Effect: Allow
+                Action: s3:DeleteObject
+                Resource: !Sub '${State.Arn}/rental/terraform.tfstate.tflock'
+              - Effect: Allow
+                Action: ['ec2:Describe*']
+                Resource: '*'
+                Condition:
+                  StringEquals: {'aws:RequestedRegion': eu-north-1}
+              - Effect: Allow
+                Action: [ec2:RunInstances, ec2:AllocateAddress, ec2:CreateSecurityGroup]
+                Resource: '*'
+                Condition:
+                  StringEquals: {'aws:RequestedRegion': eu-north-1, 'aws:RequestTag/Project': rental-project}
+              - Effect: Allow
+                Action: ec2:RunInstances
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ec2:eu-north-1::image/*'
+                  - !Sub 'arn:${AWS::Partition}:ec2:eu-north-1:${AWS::AccountId}:subnet/${Subnet}'
+                  - !Sub 'arn:${AWS::Partition}:ec2:eu-north-1:${AWS::AccountId}:key-pair/${KeyName}'
+                  - !Sub 'arn:${AWS::Partition}:ec2:eu-north-1:${AWS::AccountId}:security-group/*'
+                  - !Sub 'arn:${AWS::Partition}:ec2:eu-north-1:${AWS::AccountId}:network-interface/*'
+                  - !Sub 'arn:${AWS::Partition}:ec2:eu-north-1:${AWS::AccountId}:volume/*'
+              - Effect: Allow
+                Action: ec2:CreateSecurityGroup
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:eu-north-1:${AWS::AccountId}:vpc/*'
+              - Effect: Allow
+                Action: ec2:CreateTags
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: eu-north-1
+                    ec2:CreateAction: [RunInstances, AllocateAddress, CreateSecurityGroup]
+              - Effect: Allow
+                Action: [ec2:AuthorizeSecurityGroupIngress, ec2:RevokeSecurityGroupIngress, ec2:AuthorizeSecurityGroupEgress, ec2:RevokeSecurityGroupEgress, ec2:AssociateAddress, ec2:ModifyInstanceCreditSpecification]
+                Resource: '*'
+                Condition:
+                  StringEquals: {'aws:RequestedRegion': eu-north-1, 'ec2:ResourceTag/Project': rental-project}
+Outputs:
+  StateBucket:
+    Value: !Ref State
+  RoleArn:
+    Value: !GetAtt Role.Arn

@@ -1,0 +1,73 @@
+name: Deploy rental to AWS
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: AWS account ID
+        required: true
+        type: string
+      approved_plan:
+        description: Leave empty to plan. To apply, enter the reviewed plan run ID.
+        required: false
+        type: string
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: rental-infrastructure
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      AWS_REGION: eu-north-1
+      ACCOUNT: ${{ inputs.account }}
+      PLAN_RUN: ${{ inputs.approved_plan }}
+      TF_IN_AUTOMATION: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate inputs
+        run: |
+          [[ "$ACCOUNT" =~ ^[0-9]{12}$ ]]
+          [[ -z "$PLAN_RUN" || "$PLAN_RUN" =~ ^[0-9]+$ ]]
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.account }}:role/rental-github-deploy
+          aws-region: eu-north-1
+          allowed-account-ids: ${{ inputs.account }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+          terraform_wrapper: false
+      - name: Initialize private state
+        run: |
+          aws cloudformation describe-stacks --stack-name rental-bootstrap > "$RUNNER_TEMP/stack.json"
+          bucket=$(jq -er '.Stacks[0].Outputs[]|select(.OutputKey=="StateBucket").OutputValue' "$RUNNER_TEMP/stack.json")
+          echo "BUCKET=$bucket" >> "$GITHUB_ENV"
+          printf 'terraform {\n backend "s3" {}\n}\n' > backend.tf
+          terraform init -input=false -lockfile=readonly -backend-config="bucket=$bucket" -backend-config=key=rental/terraform.tfstate -backend-config=region=eu-north-1 -backend-config=use_lockfile=true -backend-config=encrypt=true
+      - name: Prepare plan
+        if: inputs.approved_plan == ''
+        run: |
+          value() { jq -er --arg k "$1" '.Stacks[0].Parameters[]|select(.ParameterKey==$k).ParameterValue' "$RUNNER_TEMP/stack.json"; }
+          export TF_VAR_subnet_id="$(value Subnet)" TF_VAR_key_name="$(value KeyName)" TF_VAR_admin_ipv4="$(value AdminIPv4)"
+          for v in "$TF_VAR_subnet_id" "$TF_VAR_admin_ipv4"; do echo "::add-mask::$v"; done
+          terraform plan -no-color -input=false -lock-timeout=2m -out="$RUNNER_TEMP/plan" > "$RUNNER_TEMP/plan.txt"
+          terraform show -json "$RUNNER_TEMP/plan" | jq -r '.resource_changes[]? | [.address,(.change.actions|join(","))] | @tsv' >> "$GITHUB_STEP_SUMMARY"
+          aws s3 cp "$RUNNER_TEMP/plan" "s3://$BUCKET/plans/$GITHUB_SHA/$GITHUB_RUN_ID" --only-show-errors
+          echo "Review the changes above. To apply this plan, use run ID $GITHUB_RUN_ID on the same commit." >> "$GITHUB_STEP_SUMMARY"
+      - name: Apply approved plan and verify HTTPS
+        if: inputs.approved_plan != ''
+        run: |
+          aws s3 cp "s3://$BUCKET/plans/$GITHUB_SHA/$PLAN_RUN" "$RUNNER_TEMP/plan" --only-show-errors
+          admin=$(jq -er '.Stacks[0].Parameters[]|select(.ParameterKey=="AdminIPv4").ParameterValue' "$RUNNER_TEMP/stack.json")
+          echo "::add-mask::$admin"
+          terraform apply -input=false -lock-timeout=2m "$RUNNER_TEMP/plan"
+          url=$(terraform output -raw catalog_url)
+          curl --retry 75 --retry-all-errors --retry-delay 8 --max-time 10 -fsS "$url" | jq -e '.results | type == "array"'
+          echo "Catalog: $url" >> "$GITHUB_STEP_SUMMARY"
